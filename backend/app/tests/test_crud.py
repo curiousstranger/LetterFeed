@@ -211,6 +211,21 @@ def test_get_newsletters(db_session: Session):
     assert len(newsletters) >= 2
 
 
+def test_get_newsletters_without_limit_returns_all(db_session: Session):
+    """Callers that pass no limit, such as the email processor, get every newsletter.
+
+    The HTTP page size belongs to the router, not the crud default (see #21).
+    """
+    for i in range(120):
+        create_newsletter(
+            db_session,
+            NewsletterCreate(name=f"Newsletter {i}", sender_emails=[f"s{i}@test.com"]),
+        )
+
+    assert len(get_newsletters(db_session)) == 120
+    assert len(get_newsletters(db_session, limit=10)) == 10
+
+
 def test_create_entry(db_session: Session):
     """Test creating a newsletter entry."""
     unique_email = f"sender_{uuid.uuid4()}@test.com"

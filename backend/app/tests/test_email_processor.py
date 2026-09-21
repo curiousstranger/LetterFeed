@@ -2,11 +2,14 @@ import imaplib
 from email.message import Message
 from unittest.mock import MagicMock, patch
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.database import engine
 from app.crud.newsletters import create_newsletter
 from app.crud.settings import create_or_update_settings
-from app.models.newsletters import Newsletter
+from app.models.entries import Entry
+from app.models.newsletters import Newsletter, Sender
 from app.schemas.newsletters import NewsletterCreate
 from app.schemas.settings import Settings, SettingsCreate
 from app.services.email_processor import _process_single_email, process_emails
@@ -278,3 +281,108 @@ def test_process_single_email_with_null_bytes_in_body(db_session: Session):
         # The body should be the original (but decoded) body, since extraction failed
         # Note: _get_email_body will decode the payload.
         assert "Hello\x00 World" in entry_create_arg.body
+
+
+# More newsletters than the HTTP page size (100) that get_newsletters defaults to.
+MANY_NEWSLETTERS = 120
+
+
+def _fake_mailbox(senders: list[str]) -> MagicMock:
+    """Build a fake IMAP connection holding one unseen email per sender."""
+    messages = {}
+    for i, sender in enumerate(senders, start=1):
+        msg = Message()
+        msg["From"] = sender
+        msg["Subject"] = f"Issue from {sender}"
+        msg["Message-ID"] = f"<msg-{i}@example.com>"
+        msg.set_payload("<html><body><p>Body</p></body></html>", "utf-8")
+        messages[str(i).encode()] = msg.as_bytes()
+
+    mail = MagicMock(spec=imaplib.IMAP4_SSL)
+    mail.search.return_value = ("OK", [b" ".join(messages)])
+    mail.fetch.side_effect = lambda num, _parts: (
+        "OK",
+        [(num + b" (BODY[])", messages[num])],
+    )
+    return mail
+
+
+def _create_many_newsletters(db_session: Session, auto_add: bool) -> list[str]:
+    create_or_update_settings(
+        db_session,
+        SettingsCreate(
+            imap_server="test.com",
+            imap_username="test",
+            imap_password="password",
+            mark_as_read=True,
+            auto_add_new_senders=auto_add,
+        ),
+    )
+    senders = [f"sender{i}@example.com" for i in range(MANY_NEWSLETTERS)]
+    for i, sender in enumerate(senders):
+        create_newsletter(
+            db_session, NewsletterCreate(name=f"Newsletter {i}", sender_emails=[sender])
+        )
+    return senders
+
+
+def _entries_per_sender() -> dict[str, int]:
+    """Count stored entries per sender using a fresh session.
+
+    A fresh session is used because an IntegrityError mid-run leaves the
+    processor's session needing a rollback.
+    """
+    with Session(engine) as fresh:
+        rows = (
+            fresh.query(Sender.email, func.count(Entry.id))
+            .join(Newsletter, Sender.newsletter_id == Newsletter.id)
+            .outerjoin(Entry, Entry.newsletter_id == Newsletter.id)
+            .group_by(Sender.email)
+            .all()
+        )
+    return dict(rows)
+
+
+@patch("app.services.email_processor._connect_to_imap")
+def test_process_emails_matches_senders_beyond_first_100_newsletters(
+    mock_connect_to_imap, db_session: Session
+):
+    """Every known sender is matched, not auto-added, however many newsletters exist.
+
+    Regression: process_emails called get_newsletters(db) and inherited its
+    HTTP page size of 100, so senders of newsletters past the first 100 were
+    treated as unknown. Auto-add then tried to re-insert an existing sender and
+    hit UNIQUE constraint failed: senders.email, aborting the whole folder.
+    """
+    senders = _create_many_newsletters(db_session, auto_add=True)
+    mock_connect_to_imap.return_value = _fake_mailbox(senders)
+
+    with patch("app.services.email_processor.logger") as mock_logger:
+        process_emails(db_session)
+
+    mock_logger.error.assert_not_called()
+    entries = _entries_per_sender()
+    assert len(entries) == MANY_NEWSLETTERS  # nothing was auto-added
+    assert entries == {sender: 1 for sender in senders}
+
+
+@patch("app.services.email_processor._connect_to_imap")
+def test_process_emails_without_auto_add_ingests_beyond_first_100_newsletters(
+    mock_connect_to_imap, db_session: Session
+):
+    """With auto-add off, newsletters past the first 100 are still ingested.
+
+    Unknown senders must still be left unread so their mail isn't consumed.
+    """
+    senders = _create_many_newsletters(db_session, auto_add=False)
+    unknown = "stranger@example.com"
+    mail = _fake_mailbox([*senders, unknown])
+    mock_connect_to_imap.return_value = mail
+
+    process_emails(db_session)
+
+    assert _entries_per_sender() == {sender: 1 for sender in senders}
+    unknown_num = str(len(senders) + 1).encode()
+    assert (unknown_num, "+FLAGS", "\\Seen") not in [
+        c.args for c in mail.store.call_args_list
+    ]
