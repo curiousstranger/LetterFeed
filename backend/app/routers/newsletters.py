@@ -33,7 +33,9 @@ def create_new_newsletter(newsletter: NewsletterCreate, db: Session = Depends(ge
 
 
 @router.get("/newsletters", response_model=List[Newsletter])
-def read_newsletters(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def read_newsletters(
+    skip: int = 0, limit: int | None = None, db: Session = Depends(get_db)
+):
     """Retrieve a list of newsletters."""
     logger.info(f"Request to read newsletters with skip={skip}, limit={limit}")
     newsletters = get_newsletters(db, skip=skip, limit=limit)
