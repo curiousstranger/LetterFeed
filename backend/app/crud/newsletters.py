@@ -32,18 +32,19 @@ def get_newsletter_by_slug(db: Session, slug: str):
     return db.query(Newsletter).filter(Newsletter.slug == slug).first()
 
 
-def get_newsletters(db: Session, skip: int = 0, limit: int = 100):
+def get_newsletters(db: Session, skip: int = 0, limit: int | None = None):
     """Retrieve a list of newsletters."""
     logger.debug(f"Querying for newsletters with skip={skip}, limit={limit}")
-    results = (
+    query = (
         db.query(Newsletter, func.count(Entry.id))
         .outerjoin(Entry, Newsletter.id == Entry.newsletter_id)
         .group_by(Newsletter.id)
         .order_by(Newsletter.id)
         .offset(skip)
-        .limit(limit)
-        .all()
     )
+    if limit is not None:
+        query = query.limit(limit)
+    results = query.all()
 
     newsletters_with_count = []
     for newsletter, count in results:
