@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -9,12 +9,14 @@ from app.crud.entries import create_entry
 from app.crud.newsletters import (
     create_newsletter,
     delete_newsletter,
+    get_active_newsletters,
     get_newsletter_by_identifier,
     get_newsletters,
     update_newsletter,
 )
 from app.schemas.entries import Entry, EntryCreate
 from app.schemas.newsletters import Newsletter, NewsletterCreate, NewsletterUpdate
+from app.services.opml_generator import generate_opml
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -40,6 +42,18 @@ def read_newsletters(
     logger.info(f"Request to read newsletters with skip={skip}, limit={limit}")
     newsletters = get_newsletters(db, skip=skip, limit=limit)
     return newsletters
+
+
+@router.get("/newsletters/opml")
+def export_newsletters_opml(base_url: str | None = None, db: Session = Depends(get_db)):
+    """Export every active newsletter feed as an OPML subscription list."""
+    logger.info("Request to export newsletters as OPML")
+    opml = generate_opml(get_active_newsletters(db), base_url=base_url)
+    return Response(
+        content=opml,
+        media_type="text/x-opml",
+        headers={"Content-Disposition": 'attachment; filename="letterfeed.opml"'},
+    )
 
 
 @router.get("/newsletters/{newsletter_id}", response_model=Newsletter)

@@ -9,6 +9,7 @@ import {
   testImapConnection,
   processEmails,
   getFeedUrl,
+  exportOpml,
   login,
   NewsletterCreate,
   NewsletterUpdate,
@@ -288,6 +289,33 @@ describe("API Functions", () => {
       const expectedUrl = `${API_BASE_URL}/feeds/123`
       const url = getFeedUrl(newsletter)
       expect(url).toBe(expectedUrl)
+    })
+  })
+
+  describe("exportOpml", () => {
+    it("should fetch the OPML export with the auth token and return a blob", async () => {
+      localStorage.setItem("authToken", "test-token")
+      const blob = new Blob(["<opml/>"], { type: "text/x-opml" })
+      ;(fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        blob: () => Promise.resolve(blob),
+      })
+
+      const result = await exportOpml()
+
+      expect(fetch).toHaveBeenCalledWith(`${API_BASE_URL}/newsletters/opml`, {
+        headers: { Authorization: "Bearer test-token" },
+      })
+      expect(result).toBe(blob)
+    })
+
+    it("should show a toast and throw when the export fails", async () => {
+      mockFetchError({ detail: "Nope" }, "Internal Server Error", 500)
+
+      await expect(exportOpml()).rejects.toThrow("Nope")
+      expect(toast.error).toHaveBeenCalledWith("Nope")
     })
   })
 })
