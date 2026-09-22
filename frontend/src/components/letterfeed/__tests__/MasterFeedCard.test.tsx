@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event"
 import "@testing-library/jest-dom"
 import { MasterFeedCard } from "../MasterFeedCard"
 import { exportOpml, getOpmlSubscribeUrl, rotateOpmlSubscribeUrl } from "@/lib/api"
+import { copyText } from "@/lib/clipboard"
+import { toast } from "sonner"
 
 // Mock the api functions used by the card
 jest.mock("@/lib/api", () => ({
@@ -22,12 +24,12 @@ jest.mock("sonner", () => ({
   },
 }))
 
-// Mock navigator.clipboard
-Object.assign(navigator, {
-  clipboard: {
-    writeText: jest.fn(),
-  },
-})
+// The card must not talk to navigator.clipboard directly: on an http:// origin
+// there is no secure context and the API is absent, so it goes through a helper
+// that falls back.
+jest.mock("@/lib/clipboard", () => ({
+  copyText: jest.fn(),
+}))
 
 const SUB_URL = "http://mock-api/api/feeds/opml/key-one"
 
@@ -35,6 +37,7 @@ describe("MasterFeedCard", () => {
   beforeEach(() => {
     jest.clearAllMocks()
     ;(getOpmlSubscribeUrl as jest.Mock).mockResolvedValue({ url: SUB_URL })
+    ;(copyText as jest.Mock).mockResolvedValue(true)
   })
 
   it("renders the master feed card with the correct URL", () => {
@@ -84,13 +87,27 @@ describe("MasterFeedCard", () => {
     expect(screen.queryByRole("link", { name: SUB_URL })).not.toBeInTheDocument()
   })
 
-  it("copies the subscription URL to the clipboard", async () => {
+  it("copies the subscription URL and confirms it", async () => {
     render(<MasterFeedCard />)
     await screen.findByText(SUB_URL)
 
     await userEvent.click(screen.getByRole("button", { name: /copy/i }))
 
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(SUB_URL)
+    expect(copyText).toHaveBeenCalledWith(SUB_URL)
+    expect(toast.success).toHaveBeenCalled()
+  })
+
+  it("says so when the copy fails instead of silently doing nothing", async () => {
+    // The original bug: the click threw, no toast appeared, and the next paste
+    // used whatever was already in the clipboard.
+    ;(copyText as jest.Mock).mockResolvedValue(false)
+    render(<MasterFeedCard />)
+    await screen.findByText(SUB_URL)
+
+    await userEvent.click(screen.getByRole("button", { name: /copy/i }))
+
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(toast.error).toHaveBeenCalled()
   })
 
   it("regenerates the URL after confirmation and shows the new one", async () => {
