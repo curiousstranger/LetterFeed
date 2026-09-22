@@ -175,9 +175,13 @@ LetterFeed UI and `/api`. Audited against the code on 2026-09-21.
 - **Why `allow-scripts` is present.** Reader apps such as Current (macOS/iOS)
   open the entry link in a WKWebView and inject their own full-text extraction
   JS. WebKit refuses all host-app JavaScript in a document sandboxed without
-  `allow-scripts` ("Cannot execute JavaScript in this document"), so without it
-  Current shows a stuck loading skeleton. With it, only the host app's
-  injected JS runs; the page's own script is still blocked by the CSP above.
+  `allow-scripts` ("Cannot execute JavaScript in this document"), so a reader
+  that extracts in-page needs it. With it, only the host app's injected JS
+  runs; the page's own script is still blocked by the CSP above.
+  This is a compatibility allowance, not a fix for any observed failure: the
+  stuck loading skeleton seen in Current on 2026-09-21 had an unrelated cause
+  (see [Deployment: article URLs must use a hostname](#deployment-article-urls-must-use-a-hostname)),
+  and adding `allow-scripts` did not change it.
   Verified 2026-09-21 in Chromium and WKWebView with a canary page: host-app JS
   ran, and page scripts, `onerror`, `javascript:` links, forms,
   iframe/object/embed and `<base>` all stayed blocked. A no-headers control
@@ -299,6 +303,40 @@ them. So:
 
 This section is the fork's own deployment: the `feed-host` stack on a remote Docker host, which
 runs LetterFeed behind FreshRSS.
+
+### Deployment: article URLs must use a hostname
+
+`APP_BASE_URL` must be a hostname, not an IP address. It becomes both each
+entry's link and the feed's `rel="alternate"` (site) link, and the Current
+reader (macOS) refuses to display an article when either is IP-hosted: its
+navigation handler cancels the load, and the article shows a permanent loading
+skeleton. The log line is `WebFrameLoaderClient::dispatchDecidePolicyFor
+NavigationAction: Got policyAction Ignore`, with
+`navigationPolicyDecision = 1` in the following
+`FrameLoader::continueLoadAfterNavigationPolicy` line.
+
+Established 2026-09-22 with probe feeds carrying identical content:
+
+| Probe | Entry link host | Feed site link host | Result |
+|---|---|---|---|
+| A | nip.io name | none | renders |
+| B | LAN-only domain name | none | renders |
+| C | nip.io name | none | renders |
+| D | **IP address** | none | skeleton |
+| 5A | domain name | **IP address** | skeleton |
+| 5B | domain name | domain name | renders |
+
+The name does not have to resolve publicly: a LAN-only name works, as does a
+nip.io name. Only the IP form fails.
+
+Two consequences for an existing deployment:
+
+- A reader stores the site URL when it first creates the source and does not
+  update it on later syncs. After changing `APP_BASE_URL`, subscriptions
+  created earlier keep the old value, so the reader has to re-create them.
+- `allow-scripts` in the entry page's CSP is unrelated to this, and adding it
+  did not change the behaviour. See
+  [Why `allow-scripts` is present](#what-protects-the-ui-and-api).
 
 ### Deployment variables
 
