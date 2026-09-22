@@ -9,7 +9,7 @@ from app.core.database import Base, SessionLocal, engine
 from app.core.logging import get_logger, setup_logging
 from app.core.scheduler import scheduler, start_scheduler_with_interval
 from app.crud.settings import create_initial_settings
-from app.routers import auth, feeds, health, imap, newsletters
+from app.routers import auth, entries, feeds, health, imap, newsletters
 
 
 @asynccontextmanager
@@ -58,3 +58,4 @@ app.include_router(auth.router)
 app.include_router(imap.router, dependencies=[Depends(protected_route)])
 app.include_router(newsletters.router, dependencies=[Depends(protected_route)])
 app.include_router(feeds.router)
+app.include_router(entries.router)

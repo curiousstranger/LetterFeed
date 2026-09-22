@@ -4,7 +4,12 @@ from unittest.mock import patch
 
 from sqlalchemy.orm import Session
 
-from app.crud.entries import create_entry, get_all_entries, get_entries_by_newsletter
+from app.crud.entries import (
+    create_entry,
+    get_all_entries,
+    get_entries_by_newsletter,
+    get_entry,
+)
 from app.crud.newsletters import (
     create_newsletter,
     get_newsletter_by_identifier,
@@ -401,3 +406,34 @@ def test_get_all_entries(db_session: Session):
     # Check that newsletter relationship is loaded
     assert all_entries[0].newsletter.name == "Newsletter One"
     assert all_entries[1].newsletter.name == "Newsletter Two"
+
+
+def test_get_entry(db_session: Session):
+    """Test getting a single entry by its id."""
+    newsletter = create_newsletter(
+        db_session,
+        NewsletterCreate(
+            name="Get Entry Newsletter",
+            sender_emails=[f"sender_{uuid.uuid4()}@test.com"],
+        ),
+    )
+    created = create_entry(
+        db_session,
+        EntryCreate(
+            subject="Get Me",
+            body="<p>Body</p>",
+            message_id=f"<{uuid.uuid4()}@test.com>",
+        ),
+        newsletter.id,
+    )
+
+    entry = get_entry(db_session, created.id)
+
+    assert entry is not None
+    assert entry.id == created.id
+    assert entry.subject == "Get Me"
+
+
+def test_get_entry_unknown_id(db_session: Session):
+    """Test that getting an unknown entry id returns None."""
+    assert get_entry(db_session, "does-not-exist") is None
