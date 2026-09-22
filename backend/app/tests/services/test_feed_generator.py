@@ -145,4 +145,4 @@ def test_entry_link_with_trailing_slash_base_url(db_session: Session):
     with _patched_base_url("https://lf.example.test/"):
         links = _entry_links_by_id(generate_feed(db_session, newsletter.id))
 
-    assert links[ids[0]][0]["href"] == (f"https://lf.example.test/api/entries/{ids[0]}")
+    assert links[ids[0]][0]["href"] == f"https://lf.example.test/api/entries/{ids[0]}"

@@ -49,7 +49,8 @@ def _add_entries_to_feed(
             else entry.subject
         )
         fe.content(entry.body, type="html")
-        # feedgen drops rel on entry links; RFC 4287 treats a link without rel as rel="alternate".
+        # feedgen 1.0.0's FeedEntry.atom_entry rebinds its loop variable, so rel is
+        # never serialized; RFC 4287 treats a link without rel as rel="alternate".
         fe.link(href=_entry_url(entry.id), rel="alternate")
 
         if entry.received_at.tzinfo is None:

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Every Atom entry LetterFeed emits carries `<link rel="alternate" href="<APP_BASE_URL>/api/entries/<id>"/>`, and that URL serves the stored entry body as a sandboxed standalone page. Then the fork deploys it from source, through a `deploy/prod` integration branch.
+**Goal:** Every Atom entry LetterFeed emits carries an alternate `<link href="<APP_BASE_URL>/api/entries/<id>"/>`, and that URL serves the stored entry body as a sandboxed standalone page. Then the fork deploys it from source, through a `deploy/prod` integration branch.
 
 **Architecture:** A new public FastAPI router, `GET /entries/{entry_id}`, returns `entry.body` verbatim with a strict CSP sandbox and other safety headers. It uses a new `get_entry` CRUD lookup. `_add_entries_to_feed` adds the link through a `_entry_url` helper, so the per-newsletter and master feeds both get it. Deployment moves from a COPY overlay to a buildx build of `backend/` from a clean `deploy/prod` worktree, run natively on the deployment host's daemon.
 
@@ -306,7 +306,7 @@
 
 ---
 
-### Task 3: Per-entry `<link rel="alternate">` in both feeds
+### Task 3: Per-entry alternate `<link>` in both feeds
 
 **Working directory:** `$LF/.worktrees/entry-links`. `cd` there before the first write. Run commands from `backend/`.
 
@@ -772,7 +772,7 @@
   (
     set -a; . deploy/.env; set +a
     # Entries carry links:
-    curl -s "$LETTERFEED_URL/api/feeds/all" | grep -o '<link href="[^"]*/api/entries/[^"]*" rel="alternate"/>' | head -3
+    curl -s "$LETTERFEED_URL/api/feeds/all" | grep -o '<link href="[^"]*/api/entries/[^"]*"' | head -3
     # The entry page's headers survive the frontend's /api rewrite (GET, not HEAD:
     # the route has no HEAD support):
     id=$(curl -s "$LETTERFEED_URL/api/feeds/all" | grep -o '/api/entries/[A-Za-z0-9_-]*' | head -1 | sed 's#.*/##')
@@ -863,7 +863,7 @@
   ```
 - [ ] **Step 5: Live check 1, links in the feed:**
   ```bash
-  cd $LF/.worktrees/deploy-prod && (set -a; . deploy/.env; set +a; curl -s "$LETTERFEED_URL/api/feeds/all" | grep -o '<link href="[^"]*/api/entries/[^"]*" rel="alternate"/>' | head -3)
+  cd $LF/.worktrees/deploy-prod && (set -a; . deploy/.env; set +a; curl -s "$LETTERFEED_URL/api/feeds/all" | grep -o '<link href="[^"]*/api/entries/[^"]*"' | head -3)
   ```
   Expected: three lines, each with an href under `$LETTERFEED_URL/api/entries/`.
 - [ ] **Step 6: Live check 2, exact headers after the Next.js rewrite.** Use GET, not `curl -I`: the route has no HEAD support, and HEAD returns 405.

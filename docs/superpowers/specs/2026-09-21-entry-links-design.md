@@ -26,11 +26,15 @@ read-later service.
 ## Goals
 
 - Every entry in every feed (per-newsletter and master) carries
-  `<link rel="alternate" href="<APP_BASE_URL>/api/entries/<entry.id>"/>`.
+  `<link href="<APP_BASE_URL>/api/entries/<entry.id>"/>`.
 - That URL renders the stored entry body as a standalone page, sandboxed so the
   newsletter's HTML can't act against the LetterFeed UI or API.
 - It's small, based on `master`, and general enough for a possible upstream PR.
   **No upstream PR without asking first.**
+- Note: feedgen 1.0.0's `FeedEntry.atom_entry` rebinds its loop variable, so
+  the `rel="alternate"` passed to `fe.link(...)` is never serialized. RFC 4287
+  §4.2.7.2 makes a link with no `rel` mean `rel="alternate"`, so the emitted
+  `<link>` is still correct.
 
 ## Upstream context: issue #19
 
@@ -221,7 +225,7 @@ and in the README if the maintainer wants user-facing docs.
 - `app/tests/services/test_feed_generator.py`: real `Newsletter`/`Entry` rows in
   the test DB. Parse the output of `generate_feed` and `generate_master_feed`
   with `xml.etree.ElementTree` and assert each `<entry>` has exactly one
-  `<link rel="alternate">` whose href is `<base>/api/entries/<id>`. Also assert
+  `<link href="<base>/api/entries/<id>"/>`. Also assert
   that a trailing slash on `app_base_url` doesn't produce `//api`.
 - `app/tests/test_crud.py`: `get_entry` returns the row, and returns `None` for
   an unknown id.
@@ -422,7 +426,7 @@ client plugin was missing.
 ### Live checks
 
 1. `curl -s "$LETTERFEED_URL/api/feeds/all"` shows
-   `<link href=".../api/entries/<id>" rel="alternate"/>` on entries.
+   `<link href=".../api/entries/<id>"/>` on entries.
 2. `curl -sI "$LETTERFEED_URL/api/entries/<id>"` shows 200, and its CSP,
    `nosniff` and `no-referrer` headers **exactly equal** the values in the unit
    tests, even **after the Next.js rewrite**. If they're missing or altered,
