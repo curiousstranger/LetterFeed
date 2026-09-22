@@ -155,8 +155,18 @@ notices the new image ID behind an unchanged tag.
   # OPML export is served and protected. Unauthenticated: 401 when auth is on.
   # With a token, outline count should match the active newsletter count:
   curl -s -D - -o /dev/null "$LETTERFEED_URL/api/newsletters/opml" | grep -iE '^(HTTP/|content-type|content-disposition)'
+  # The keyed subscription URL a reader polls. The key comes from the protected
+  # endpoint, so this only works unauthenticated while auth is off:
+  u=$(curl -s "$LETTERFEED_URL/api/newsletters/opml/subscribe-url" | sed 's/.*"url":"//;s/".*//')
+  curl -s -o /dev/null -w 'subscribe-url: %{http_code}\n' "$u"
+  # A wrong key must 404, never 401:
+  curl -s -o /dev/null -w 'wrong key: %{http_code}\n' "$LETTERFEED_URL/api/feeds/opml/wrong"
 )
 ```
+
+Treat that URL as a credential: it needs no login, and it lists every feed. Do
+not paste it into an issue or a log. Regenerate it from the Master Feed card if
+it leaks.
 
 The frontend half of a deploy is only checked by loading the UI: the Master
 Feed card must show an **Export OPML** button, and clicking it must download
