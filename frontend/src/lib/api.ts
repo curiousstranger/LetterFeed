@@ -235,3 +235,11 @@ export async function exportOpml(): Promise<Blob> {
     }
     return response.blob();
 }
+
+export async function getOpmlSubscribeUrl(): Promise<{ url: string }> {
+    return fetcher<{ url: string }>(`${API_BASE_URL}/newsletters/opml/subscribe-url`, {}, "Failed to fetch the OPML subscription URL");
+}
+
+export async function rotateOpmlSubscribeUrl(): Promise<{ url: string }> {
+    return fetcher<{ url: string }>(`${API_BASE_URL}/newsletters/opml/subscribe-url/rotate`, { method: 'POST' }, "Failed to regenerate the OPML subscription URL");
+}

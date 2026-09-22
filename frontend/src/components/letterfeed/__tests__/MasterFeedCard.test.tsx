@@ -3,13 +3,15 @@ import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import "@testing-library/jest-dom"
 import { MasterFeedCard } from "../MasterFeedCard"
-import { exportOpml } from "@/lib/api"
+import { exportOpml, getOpmlSubscribeUrl, rotateOpmlSubscribeUrl } from "@/lib/api"
 
 // Mock the api functions used by the card
 jest.mock("@/lib/api", () => ({
   ...jest.requireActual("@/lib/api"),
   getMasterFeedUrl: jest.fn(() => "http://mock-api/feeds/all"),
   exportOpml: jest.fn(),
+  getOpmlSubscribeUrl: jest.fn(),
+  rotateOpmlSubscribeUrl: jest.fn(),
 }))
 
 // Mock the toast
@@ -27,9 +29,12 @@ Object.assign(navigator, {
   },
 })
 
+const SUB_URL = "http://mock-api/api/feeds/opml/key-one"
+
 describe("MasterFeedCard", () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    ;(getOpmlSubscribeUrl as jest.Mock).mockResolvedValue({ url: SUB_URL })
   })
 
   it("renders the master feed card with the correct URL", () => {
@@ -68,5 +73,50 @@ describe("MasterFeedCard", () => {
     expect(createObjectURL).toHaveBeenCalledWith(blob)
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:mock-url")
     clickSpy.mockRestore()
+  })
+  it("shows the subscription URL as copyable text rather than a link", async () => {
+    render(<MasterFeedCard />)
+
+    expect(await screen.findByText(SUB_URL)).toBeInTheDocument()
+    // Exactly one link on the card: the RSS feed URL. A key in an anchor would
+    // end up in browser history.
+    expect(screen.getAllByRole("link")).toHaveLength(1)
+    expect(screen.queryByRole("link", { name: SUB_URL })).not.toBeInTheDocument()
+  })
+
+  it("copies the subscription URL to the clipboard", async () => {
+    render(<MasterFeedCard />)
+    await screen.findByText(SUB_URL)
+
+    await userEvent.click(screen.getByRole("button", { name: /copy/i }))
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(SUB_URL)
+  })
+
+  it("regenerates the URL after confirmation and shows the new one", async () => {
+    ;(rotateOpmlSubscribeUrl as jest.Mock).mockResolvedValue({
+      url: "http://mock-api/api/feeds/opml/key-two",
+    })
+    jest.spyOn(window, "confirm").mockReturnValue(true)
+
+    render(<MasterFeedCard />)
+    await screen.findByText(SUB_URL)
+    await userEvent.click(screen.getByRole("button", { name: /regenerate/i }))
+
+    expect(
+      await screen.findByText("http://mock-api/api/feeds/opml/key-two")
+    ).toBeInTheDocument()
+    expect(screen.queryByText(SUB_URL)).not.toBeInTheDocument()
+  })
+
+  it("does not regenerate when the confirmation is declined", async () => {
+    jest.spyOn(window, "confirm").mockReturnValue(false)
+
+    render(<MasterFeedCard />)
+    await screen.findByText(SUB_URL)
+    await userEvent.click(screen.getByRole("button", { name: /regenerate/i }))
+
+    expect(rotateOpmlSubscribeUrl).not.toHaveBeenCalled()
+    expect(screen.getByText(SUB_URL)).toBeInTheDocument()
   })
 })

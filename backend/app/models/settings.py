@@ -19,3 +19,6 @@ class Settings(Base):
     auto_add_new_senders = Column(Boolean, default=False)
     auth_username = Column(String, nullable=True)
     auth_password_hash = Column(String, nullable=True)
+    # Capability key for the unauthenticated OPML subscription URL, which feed
+    # readers poll and cannot send a bearer token for.
+    opml_key = Column(String, nullable=True)
