@@ -90,7 +90,7 @@ export function MasterFeedCard() {
           </h4>
           <p className="text-sm text-muted-foreground mb-2">
             Download the list for a one-off import, or give a reader the URL to follow
-            it. FreshRSS reads it as a category&apos;s dynamic OPML, subscribing to new
+            it. Readers that support dynamic OPML re-read the URL and subscribe to new
             newsletters as they appear.
           </p>
           <div className="flex flex-wrap items-center gap-2">
