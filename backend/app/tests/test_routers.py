@@ -4,7 +4,9 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.crud.newsletters import create_newsletter
 from app.crud.settings import create_or_update_settings
+from app.schemas.newsletters import NewsletterCreate
 from app.schemas.settings import SettingsCreate
 
 
@@ -131,6 +133,26 @@ def test_get_newsletters(client: TestClient):
     assert any(
         unique_email in [s["email"] for s in nl["senders"]] for nl in response.json()
     )
+
+
+def test_get_newsletters_returns_all_by_default(
+    client: TestClient, db_session: Session
+):
+    """The newsletter list is not truncated unless the client asks for a page.
+
+    The frontend fetches /newsletters without skip or limit and has no
+    pagination, so a default page size hid every newsletter past the first
+    100 from the UI.
+    """
+    for i in range(120):
+        create_newsletter(
+            db_session,
+            NewsletterCreate(name=f"Newsletter {i}", sender_emails=[f"s{i}@test.com"]),
+        )
+
+    assert len(client.get("/newsletters").json()) == 120
+    assert len(client.get("/newsletters?limit=10").json()) == 10
+    assert len(client.get("/newsletters?skip=110").json()) == 10
 
 
 def test_get_single_newsletter(client: TestClient):
