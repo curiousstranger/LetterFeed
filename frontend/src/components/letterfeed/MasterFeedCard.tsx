@@ -11,6 +11,7 @@ import {
   getOpmlSubscribeUrl,
   rotateOpmlSubscribeUrl,
 } from "@/lib/api"
+import { copyText } from "@/lib/clipboard"
 
 export function MasterFeedCard() {
   const feedUrl = getMasterFeedUrl()
@@ -40,8 +41,11 @@ export function MasterFeedCard() {
 
   const handleCopy = useCallback(async () => {
     if (!subscribeUrl) return
-    await navigator.clipboard.writeText(subscribeUrl)
-    toast.success("Subscription URL copied")
+    if (await copyText(subscribeUrl)) {
+      toast.success("Subscription URL copied")
+    } else {
+      toast.error("Could not copy automatically. Select the URL and copy it.")
+    }
   }, [subscribeUrl])
 
   const handleRegenerate = async () => {
