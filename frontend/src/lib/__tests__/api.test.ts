@@ -10,6 +10,8 @@ import {
   processEmails,
   getFeedUrl,
   exportOpml,
+  getOpmlSubscribeUrl,
+  rotateOpmlSubscribeUrl,
   login,
   NewsletterCreate,
   NewsletterUpdate,
@@ -316,6 +318,37 @@ describe("API Functions", () => {
 
       await expect(exportOpml()).rejects.toThrow("Nope")
       expect(toast.error).toHaveBeenCalledWith("Nope")
+    })
+  })
+  describe("getOpmlSubscribeUrl", () => {
+    it("should fetch the subscription URL with the auth token", async () => {
+      localStorage.setItem("authToken", "test-token")
+      mockFetch({ url: "http://host/api/feeds/opml/abc123" })
+
+      const result = await getOpmlSubscribeUrl()
+
+      expect(fetch).toHaveBeenCalledWith(
+        `${API_BASE_URL}/newsletters/opml/subscribe-url`,
+        expect.objectContaining({
+          headers: { Authorization: "Bearer test-token" },
+        })
+      )
+      expect(result.url).toBe("http://host/api/feeds/opml/abc123")
+    })
+  })
+
+  describe("rotateOpmlSubscribeUrl", () => {
+    it("should POST to the rotate endpoint and return the new URL", async () => {
+      localStorage.setItem("authToken", "test-token")
+      mockFetch({ url: "http://host/api/feeds/opml/new456" })
+
+      const result = await rotateOpmlSubscribeUrl()
+
+      expect(fetch).toHaveBeenCalledWith(
+        `${API_BASE_URL}/newsletters/opml/subscribe-url/rotate`,
+        expect.objectContaining({ method: "POST" })
+      )
+      expect(result.url).toBe("http://host/api/feeds/opml/new456")
     })
   })
 })

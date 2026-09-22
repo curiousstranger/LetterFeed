@@ -1,3 +1,5 @@
+import secrets
+
 from sqlalchemy.orm import Session
 
 from app.core.config import settings as env_settings
@@ -32,11 +34,55 @@ def create_initial_settings(db: Session):
         if "auth_password" in env_data_for_db:
             del env_data_for_db["auth_password"]
 
+        env_data_for_db["opml_key"] = _new_opml_key()
+
         db_settings = SettingsModel(**env_data_for_db)
         db.add(db_settings)
         db.commit()
         db.refresh(db_settings)
         logger.info("Default settings created from environment variables.")
+
+
+def _new_opml_key() -> str:
+    """Generate a capability key for the OPML subscription URL."""
+    return secrets.token_urlsafe(32)
+
+
+def get_opml_key(db: Session) -> str | None:
+    """Return the stored OPML subscription key, or None if there is none.
+
+    This never creates a key: it serves the unauthenticated subscription route,
+    where a caller must not be able to bring a key into existence.
+    """
+    db_settings = db.query(SettingsModel).first()
+    return db_settings.opml_key if db_settings else None
+
+
+def get_or_create_opml_key(db: Session) -> str:
+    """Return the OPML subscription key, generating one if not set yet.
+
+    Installs that predate the key have a NULL column, so it is filled in on
+    first authenticated use rather than by the migration.
+    """
+    create_initial_settings(db)
+    db_settings = db.query(SettingsModel).first()
+    if not db_settings.opml_key:
+        logger.info("Generating an OPML subscription key.")
+        db_settings.opml_key = _new_opml_key()
+        db.commit()
+        db.refresh(db_settings)
+    return db_settings.opml_key
+
+
+def rotate_opml_key(db: Session) -> str:
+    """Replace the OPML subscription key, revoking the previous URL."""
+    create_initial_settings(db)
+    db_settings = db.query(SettingsModel).first()
+    logger.info("Rotating the OPML subscription key.")
+    db_settings.opml_key = _new_opml_key()
+    db.commit()
+    db.refresh(db_settings)
+    return db_settings.opml_key
 
 
 def get_settings(db: Session, with_password: bool = False) -> SettingsSchema:

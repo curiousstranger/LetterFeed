@@ -14,9 +14,10 @@ from app.crud.newsletters import (
     get_newsletters,
     update_newsletter,
 )
+from app.crud.settings import get_or_create_opml_key, rotate_opml_key
 from app.schemas.entries import Entry, EntryCreate
 from app.schemas.newsletters import Newsletter, NewsletterCreate, NewsletterUpdate
-from app.services.opml_generator import generate_opml
+from app.services.opml_generator import generate_opml, opml_subscribe_url
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -52,6 +53,20 @@ def export_newsletters_opml(base_url: str | None = None, db: Session = Depends(g
         media_type="text/x-opml",
         headers={"Content-Disposition": 'attachment; filename="letterfeed.opml"'},
     )
+
+
+@router.get("/newsletters/opml/subscribe-url")
+def read_opml_subscribe_url(db: Session = Depends(get_db)):
+    """Return the subscription URL for readers that poll a dynamic OPML."""
+    logger.info("Request for the OPML subscription URL")
+    return {"url": opml_subscribe_url(get_or_create_opml_key(db))}
+
+
+@router.post("/newsletters/opml/subscribe-url/rotate")
+def rotate_opml_subscribe_url(db: Session = Depends(get_db)):
+    """Issue a new subscription URL, revoking the previous one."""
+    logger.info("Request to rotate the OPML subscription URL")
+    return {"url": opml_subscribe_url(rotate_opml_key(db))}
 
 
 @router.get("/newsletters/{newsletter_id}", response_model=Newsletter)
