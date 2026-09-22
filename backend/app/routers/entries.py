@@ -10,18 +10,22 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 # The entry body is untrusted, sender-controlled HTML served on the same
-# origin as the UI and API. The CSP sandbox (no allow-scripts, no
-# allow-same-origin) disables JS and gives the page an opaque origin, so it
-# can't read the UI's localStorage token or make credentialed requests. Forms,
-# framing and <base> are blocked; images, styles, fonts and media may load so
-# newsletter layouts still render.
+# origin as the UI and API. The CSP sandbox omits allow-same-origin, so the
+# page gets an opaque origin and can't read the UI's localStorage token or make
+# credentialed requests. Page script is blocked by default-src 'none' (no
+# script-src), which covers inline, external, event-handler and javascript:
+# URLs. allow-scripts is there only so reader apps (e.g. Current, on WebKit)
+# can run their own extraction JS in the page; WebKit refuses all host-app JS
+# in a sandbox without it. Never add allow-same-origin. Forms, framing and
+# <base> are blocked; images, styles, fonts and media may load so newsletter
+# layouts still render.
 #
 # INVARIANT: LetterFeed must never add a state-changing GET route. The sandbox
 # does not stop same-origin subresource requests: <img src="/api/..."> in an
 # entry still sends a GET.
 SAFETY_HEADERS = {
     "Content-Security-Policy": (
-        "sandbox allow-popups allow-popups-to-escape-sandbox; "
+        "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; "
         "default-src 'none'; img-src * data:; style-src * 'unsafe-inline'; "
         "font-src * data:; media-src *; form-action 'none'; base-uri 'none'; "
         "frame-ancestors 'none'"

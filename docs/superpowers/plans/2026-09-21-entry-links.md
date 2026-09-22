@@ -147,7 +147,7 @@
 - [ ] **Step 1: Write the failing tests.** Append to `backend/app/tests/test_routers.py`. The header values are written out literally on purpose: browsers silently ignore a malformed directive, so a typo would fail open, and exact matching makes any policy change visible in review.
   ```python
   EXPECTED_ENTRY_CSP = (
-      "sandbox allow-popups allow-popups-to-escape-sandbox; "
+      "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; "
       "default-src 'none'; img-src * data:; style-src * 'unsafe-inline'; "
       "font-src * data:; media-src *; form-action 'none'; base-uri 'none'; "
       "frame-ancestors 'none'"
@@ -248,18 +248,22 @@
   router = APIRouter()
 
   # The entry body is untrusted, sender-controlled HTML served on the same
-  # origin as the UI and API. The CSP sandbox (no allow-scripts, no
-  # allow-same-origin) disables JS and gives the page an opaque origin, so it
-  # can't read the UI's localStorage token or make credentialed requests. Forms,
-  # framing and <base> are blocked; images, styles, fonts and media may load so
-  # newsletter layouts still render.
+  # origin as the UI and API. The CSP sandbox omits allow-same-origin, so the
+  # page gets an opaque origin and can't read the UI's localStorage token or make
+  # credentialed requests. Page script is blocked by default-src 'none' (no
+  # script-src), which covers inline, external, event-handler and javascript:
+  # URLs. allow-scripts is there only so reader apps (e.g. Current, on WebKit)
+  # can run their own extraction JS in the page; WebKit refuses all host-app JS
+  # in a sandbox without it. Never add allow-same-origin. Forms, framing and
+  # <base> are blocked; images, styles, fonts and media may load so newsletter
+  # layouts still render.
   #
   # INVARIANT: LetterFeed must never add a state-changing GET route. The sandbox
   # does not stop same-origin subresource requests: <img src="/api/..."> in an
   # entry still sends a GET.
   SAFETY_HEADERS = {
       "Content-Security-Policy": (
-          "sandbox allow-popups allow-popups-to-escape-sandbox; "
+          "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; "
           "default-src 'none'; img-src * data:; style-src * 'unsafe-inline'; "
           "font-src * data:; media-src *; form-action 'none'; base-uri 'none'; "
           "frame-ancestors 'none'"
@@ -872,7 +876,7 @@
   id=$(curl -s "$LETTERFEED_URL/api/feeds/all" | grep -o '/api/entries/[A-Za-z0-9_-]*' | head -1 | sed 's#.*/##')
   h=$(curl -s -D - -o /dev/null "$LETTERFEED_URL/api/entries/$id" | tr -d '\r')
   echo "$h" | head -1
-  want_csp="sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; img-src * data:; style-src * 'unsafe-inline'; font-src * data:; media-src *; form-action 'none'; base-uri 'none'; frame-ancestors 'none'"
+  want_csp="sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; default-src 'none'; img-src * data:; style-src * 'unsafe-inline'; font-src * data:; media-src *; form-action 'none'; base-uri 'none'; frame-ancestors 'none'"
   [ "$(echo "$h" | grep -i '^content-security-policy:' | sed 's/^[^:]*: //')" = "$want_csp" ] && echo "CSP ok" || echo "CSP MISMATCH"
   [ "$(echo "$h" | grep -i '^x-content-type-options:' | sed 's/^[^:]*: //')" = "nosniff" ] && echo "nosniff ok" || echo "nosniff MISMATCH"
   [ "$(echo "$h" | grep -i '^referrer-policy:' | sed 's/^[^:]*: //')" = "no-referrer" ] && echo "referrer ok" || echo "referrer MISMATCH"

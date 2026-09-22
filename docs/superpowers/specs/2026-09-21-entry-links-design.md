@@ -129,7 +129,8 @@ Atom `<content type="html">` carries. Log the entry id only, never the body.
 The safety headers are defined once as a module-level constant:
 
 ```
-Content-Security-Policy: sandbox allow-popups allow-popups-to-escape-sandbox;
+Content-Security-Policy: sandbox allow-scripts allow-popups
+    allow-popups-to-escape-sandbox;
     default-src 'none'; img-src * data:; style-src * 'unsafe-inline';
     font-src * data:; media-src *; form-action 'none'; base-uri 'none';
     frame-ancestors 'none'
@@ -161,13 +162,26 @@ LetterFeed UI and `/api`. Audited against the code on 2026-09-21.
 
 ### What protects the UI and API
 
-- **No script, and an opaque origin.** `sandbox` without `allow-scripts` or
-  `allow-same-origin` disables JS and gives the page a unique opaque origin. The
-  UI keeps its auth token in `localStorage` (`frontend/src/contexts/AuthContext.tsx`,
+- **An opaque origin.** The `sandbox` directive omits `allow-same-origin`, so
+  the page gets a unique opaque origin. The UI keeps its auth token in
+  `localStorage` (`frontend/src/contexts/AuthContext.tsx`,
   `frontend/src/lib/api.ts`), which an opaque origin can't read. Auth is a
   Bearer header set by JS; LetterFeed sets no cookies, so requests from the page
-  carry no credentials. `default-src 'none'` (no `connect-src`, frames, objects
-  or workers) is defense in depth.
+  carry no credentials. **Never add `allow-same-origin`.**
+- **No page script.** `default-src 'none'` with no `script-src` blocks every
+  script the body carries: inline `<script>`, external scripts, event handlers
+  such as `onerror`, and `javascript:` URLs. It also blocks `connect-src`,
+  frames, objects, embeds and workers.
+- **Why `allow-scripts` is present.** Reader apps such as Current (macOS/iOS)
+  open the entry link in a WKWebView and inject their own full-text extraction
+  JS. WebKit refuses all host-app JavaScript in a document sandboxed without
+  `allow-scripts` ("Cannot execute JavaScript in this document"), so without it
+  Current shows a stuck loading skeleton. With it, only the host app's
+  injected JS runs; the page's own script is still blocked by the CSP above.
+  Verified 2026-09-21 in Chromium and WKWebView with a canary page: host-app JS
+  ran, and page scripts, `onerror`, `javascript:` links, forms,
+  iframe/object/embed and `<base>` all stayed blocked, while a no-headers
+  control fired every canary.
 - **No form posts.** `form-action 'none'`, plus the sandbox without
   `allow-forms`. This also rules out on-origin credential phishing: a fake
   "log in" form can't submit.

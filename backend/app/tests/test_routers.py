@@ -203,7 +203,7 @@ def test_get_newsletter_feed_nonexistent_newsletter(client: TestClient):
 
 
 EXPECTED_ENTRY_CSP = (
-    "sandbox allow-popups allow-popups-to-escape-sandbox; "
+    "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; "
     "default-src 'none'; img-src * data:; style-src * 'unsafe-inline'; "
     "font-src * data:; media-src *; form-action 'none'; base-uri 'none'; "
     "frame-ancestors 'none'"
