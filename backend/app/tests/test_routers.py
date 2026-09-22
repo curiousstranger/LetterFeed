@@ -200,3 +200,86 @@ def test_get_newsletter_feed_nonexistent_newsletter(client: TestClient):
     response = client.get("/feeds/nonexistent")
     assert response.status_code == 404
     assert response.json() == {"detail": "Newsletter not found"}
+
+
+EXPECTED_ENTRY_CSP = (
+    "sandbox allow-popups allow-popups-to-escape-sandbox; "
+    "default-src 'none'; img-src * data:; style-src * 'unsafe-inline'; "
+    "font-src * data:; media-src *; form-action 'none'; base-uri 'none'; "
+    "frame-ancestors 'none'"
+)
+
+
+def _create_entry_via_api(client: TestClient, body: str) -> str:
+    """Create a newsletter with one entry through the API and return the entry id."""
+    newsletter = client.post(
+        "/newsletters",
+        json={
+            "name": "Entry Page Newsletter",
+            "sender_emails": [f"entry_page_{uuid.uuid4()}@example.com"],
+        },
+    ).json()
+    entry = client.post(
+        f"/newsletters/{newsletter['id']}/entries",
+        json={
+            "subject": "Entry Page",
+            "body": body,
+            "message_id": f"<entry_page_{uuid.uuid4()}@test.com>",
+        },
+    ).json()
+    return entry["id"]
+
+
+def test_get_entry_page_returns_stored_body(client: TestClient):
+    """Test that the entry page returns the exact stored body as HTML."""
+    body = "<html><body><h1>Héllo ✉</h1><script>alert(1)</script></body></html>"
+    entry_id = _create_entry_via_api(client, body)
+
+    response = client.get(f"/entries/{entry_id}")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "text/html; charset=utf-8"
+    assert response.text == body
+
+
+def test_get_entry_page_sends_safety_headers(client: TestClient):
+    """Test that the entry page sends the exact sandbox and safety headers."""
+    entry_id = _create_entry_via_api(client, "<p>hi</p>")
+
+    response = client.get(f"/entries/{entry_id}")
+
+    assert response.status_code == 200
+    assert response.headers["content-security-policy"] == EXPECTED_ENTRY_CSP
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["referrer-policy"] == "no-referrer"
+
+
+def test_get_entry_page_unknown_id(client: TestClient):
+    """Test that an unknown entry id returns 404."""
+    response = client.get("/entries/does-not-exist")
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Entry not found"}
+
+
+def test_get_entry_page_is_public_when_auth_enabled(
+    client: TestClient, db_session: Session
+):
+    """Test that the entry page needs no token even when auth is configured."""
+    entry_id = _create_entry_via_api(client, "<p>public</p>")
+    create_or_update_settings(
+        db_session,
+        SettingsCreate(
+            imap_server="test.com",
+            imap_username="test",
+            imap_password="password",
+            auth_username="admin",
+            auth_password="password",
+        ),
+    )
+    # Sanity check: auth really is on for protected routes.
+    assert client.get("/newsletters").status_code == 401
+
+    response = client.get(f"/entries/{entry_id}")
+
+    assert response.status_code == 200
+    assert response.text == "<p>public</p>"
