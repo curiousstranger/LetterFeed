@@ -28,6 +28,14 @@ def _create_feed_generator(
     return fg
 
 
+def _entry_url(entry_id: str) -> str:
+    """Return the public URL of an entry's standalone page."""
+    # APP_BASE_URL is the frontend's URL. The frontend exposes the backend
+    # under /api (see frontend/src/middleware.ts), so the backend route
+    # /entries/{id} is published at <APP_BASE_URL>/api/entries/{id}.
+    return f"{settings.app_base_url.rstrip('/')}/api/entries/{entry_id}"
+
+
 def _add_entries_to_feed(
     fg: FeedGenerator, entries: List[Entry], is_master_feed: bool = False
 ):
@@ -41,6 +49,8 @@ def _add_entries_to_feed(
             else entry.subject
         )
         fe.content(entry.body, type="html")
+        # feedgen drops rel on entry links; RFC 4287 treats a link without rel as rel="alternate".
+        fe.link(href=_entry_url(entry.id), rel="alternate")
 
         if entry.received_at.tzinfo is None:
             timezone_aware_received_at = entry.received_at.replace(tzinfo=tz.tzutc())
