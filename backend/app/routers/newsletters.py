@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -9,12 +9,15 @@ from app.crud.entries import create_entry
 from app.crud.newsletters import (
     create_newsletter,
     delete_newsletter,
+    get_active_newsletters,
     get_newsletter_by_identifier,
     get_newsletters,
     update_newsletter,
 )
+from app.crud.settings import get_or_create_opml_key, rotate_opml_key
 from app.schemas.entries import Entry, EntryCreate
 from app.schemas.newsletters import Newsletter, NewsletterCreate, NewsletterUpdate
+from app.services.opml_generator import generate_opml, opml_subscribe_url
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -38,6 +41,32 @@ def read_newsletters(skip: int = 0, limit: int = 100, db: Session = Depends(get_
     logger.info(f"Request to read newsletters with skip={skip}, limit={limit}")
     newsletters = get_newsletters(db, skip=skip, limit=limit)
     return newsletters
+
+
+@router.get("/newsletters/opml")
+def export_newsletters_opml(base_url: str | None = None, db: Session = Depends(get_db)):
+    """Export every active newsletter feed as an OPML subscription list."""
+    logger.info("Request to export newsletters as OPML")
+    opml = generate_opml(get_active_newsletters(db), base_url=base_url)
+    return Response(
+        content=opml,
+        media_type="text/x-opml",
+        headers={"Content-Disposition": 'attachment; filename="letterfeed.opml"'},
+    )
+
+
+@router.get("/newsletters/opml/subscribe-url")
+def read_opml_subscribe_url(db: Session = Depends(get_db)):
+    """Return the subscription URL for readers that poll a dynamic OPML."""
+    logger.info("Request for the OPML subscription URL")
+    return {"url": opml_subscribe_url(get_or_create_opml_key(db))}
+
+
+@router.post("/newsletters/opml/subscribe-url/rotate")
+def rotate_opml_subscribe_url(db: Session = Depends(get_db)):
+    """Issue a new subscription URL, revoking the previous one."""
+    logger.info("Request to rotate the OPML subscription URL")
+    return {"url": opml_subscribe_url(rotate_opml_key(db))}
 
 
 @router.get("/newsletters/{newsletter_id}", response_model=Newsletter)

@@ -9,6 +9,9 @@ import {
   testImapConnection,
   processEmails,
   getFeedUrl,
+  exportOpml,
+  getOpmlSubscribeUrl,
+  rotateOpmlSubscribeUrl,
   login,
   NewsletterCreate,
   NewsletterUpdate,
@@ -288,6 +291,64 @@ describe("API Functions", () => {
       const expectedUrl = `${API_BASE_URL}/feeds/123`
       const url = getFeedUrl(newsletter)
       expect(url).toBe(expectedUrl)
+    })
+  })
+
+  describe("exportOpml", () => {
+    it("should fetch the OPML export with the auth token and return a blob", async () => {
+      localStorage.setItem("authToken", "test-token")
+      const blob = new Blob(["<opml/>"], { type: "text/x-opml" })
+      ;(fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        blob: () => Promise.resolve(blob),
+      })
+
+      const result = await exportOpml()
+
+      expect(fetch).toHaveBeenCalledWith(`${API_BASE_URL}/newsletters/opml`, {
+        headers: { Authorization: "Bearer test-token" },
+      })
+      expect(result).toBe(blob)
+    })
+
+    it("should show a toast and throw when the export fails", async () => {
+      mockFetchError({ detail: "Nope" }, "Internal Server Error", 500)
+
+      await expect(exportOpml()).rejects.toThrow("Nope")
+      expect(toast.error).toHaveBeenCalledWith("Nope")
+    })
+  })
+  describe("getOpmlSubscribeUrl", () => {
+    it("should fetch the subscription URL with the auth token", async () => {
+      localStorage.setItem("authToken", "test-token")
+      mockFetch({ url: "http://host/api/feeds/opml/abc123" })
+
+      const result = await getOpmlSubscribeUrl()
+
+      expect(fetch).toHaveBeenCalledWith(
+        `${API_BASE_URL}/newsletters/opml/subscribe-url`,
+        expect.objectContaining({
+          headers: { Authorization: "Bearer test-token" },
+        })
+      )
+      expect(result.url).toBe("http://host/api/feeds/opml/abc123")
+    })
+  })
+
+  describe("rotateOpmlSubscribeUrl", () => {
+    it("should POST to the rotate endpoint and return the new URL", async () => {
+      localStorage.setItem("authToken", "test-token")
+      mockFetch({ url: "http://host/api/feeds/opml/new456" })
+
+      const result = await rotateOpmlSubscribeUrl()
+
+      expect(fetch).toHaveBeenCalledWith(
+        `${API_BASE_URL}/newsletters/opml/subscribe-url/rotate`,
+        expect.objectContaining({ method: "POST" })
+      )
+      expect(result.url).toBe("http://host/api/feeds/opml/new456")
     })
   })
 })

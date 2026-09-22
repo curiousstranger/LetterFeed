@@ -212,3 +212,34 @@ export function getFeedUrl(newsletter: Newsletter): string {
 export function getMasterFeedUrl(): string {
     return `${API_BASE_URL}/feeds/all`;
 }
+
+export async function exportOpml(): Promise<Blob> {
+    const token = localStorage.getItem("authToken");
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    const response = await fetch(`${API_BASE_URL}/newsletters/opml`, { headers });
+    if (!response.ok) {
+        let errorText = `Failed to export OPML: ${response.statusText}`;
+        try {
+            const errorData = await response.json();
+            if (errorData.detail) {
+                errorText = errorData.detail;
+            }
+        } catch (e) { // eslint-disable-line @typescript-eslint/no-unused-vars
+            // ignore error if response is not JSON
+        }
+        if (response.status === 401) {
+            localStorage.removeItem("authToken");
+        }
+        toast.error(errorText);
+        throw new Error(errorText);
+    }
+    return response.blob();
+}
+
+export async function getOpmlSubscribeUrl(): Promise<{ url: string }> {
+    return fetcher<{ url: string }>(`${API_BASE_URL}/newsletters/opml/subscribe-url`, {}, "Failed to fetch the OPML subscription URL");
+}
+
+export async function rotateOpmlSubscribeUrl(): Promise<{ url: string }> {
+    return fetcher<{ url: string }>(`${API_BASE_URL}/newsletters/opml/subscribe-url/rotate`, { method: 'POST' }, "Failed to regenerate the OPML subscription URL");
+}

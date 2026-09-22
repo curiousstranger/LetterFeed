@@ -53,6 +53,11 @@ def get_newsletters(db: Session, skip: int = 0, limit: int = 100):
     return newsletters_with_count
 
 
+def get_active_newsletters(db: Session):
+    """Retrieve every active newsletter, without pagination."""
+    return db.query(Newsletter).filter(Newsletter.is_active.is_(True)).all()
+
+
 def create_newsletter(db: Session, newsletter: NewsletterCreate):
     """Create a new newsletter."""
     logger.info(f"Creating new newsletter with name '{newsletter.name}'")
