@@ -180,8 +180,10 @@ LetterFeed UI and `/api`. Audited against the code on 2026-09-21.
   injected JS runs; the page's own script is still blocked by the CSP above.
   Verified 2026-09-21 in Chromium and WKWebView with a canary page: host-app JS
   ran, and page scripts, `onerror`, `javascript:` links, forms,
-  iframe/object/embed and `<base>` all stayed blocked, while a no-headers
-  control fired every canary.
+  iframe/object/embed and `<base>` all stayed blocked. A no-headers control
+  fired all of those canaries. (WebKit blocks `javascript:` meta refreshes and
+  new-tab `javascript:` links even without headers; Chrome's console shows the
+  CSP refusing them.)
 - **No form posts.** `form-action 'none'`, plus the sandbox without
   `allow-forms`. This also rules out on-origin credential phishing: a fake
   "log in" form can't submit.
