@@ -15,6 +15,8 @@ class Entry(Base):
     newsletter_id = Column(String, ForeignKey("newsletters.id"))
     subject = Column(String)
     body = Column(Text)
+    # Body with layout tables flattened for feed readers; None until filled.
+    feed_body = Column(Text, nullable=True)
     received_at = Column(DateTime(timezone=True), default=datetime.datetime.now)
     message_id = Column(String, unique=True, index=True, nullable=False)
 
