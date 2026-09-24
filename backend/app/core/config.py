@@ -46,6 +46,8 @@ class Settings(BaseSettings):
             "MASTER_FEED_LIMIT", "LETTERFEED_MASTER_FEED_LIMIT"
         ),
     )
+    # Serve entries' flattened feed_body in feeds (see app/services/feed_html.py).
+    flatten_feed_tables: bool = True
 
 
 settings = Settings()

@@ -36,6 +36,13 @@ def _entry_url(entry_id: str) -> str:
     return f"{settings.app_base_url.rstrip('/')}/api/entries/{entry_id}"
 
 
+def _entry_content(entry: Entry) -> str:
+    """Return the HTML to publish as an entry's feed content."""
+    if settings.flatten_feed_tables and entry.feed_body is not None:
+        return entry.feed_body
+    return entry.body
+
+
 def _add_entries_to_feed(
     fg: FeedGenerator, entries: List[Entry], is_master_feed: bool = False
 ):
@@ -48,7 +55,7 @@ def _add_entries_to_feed(
             if is_master_feed
             else entry.subject
         )
-        fe.content(entry.body, type="html")
+        fe.content(_entry_content(entry), type="html")
         # feedgen 1.0.0's FeedEntry.atom_entry rebinds its loop variable, so rel is
         # never serialized; RFC 4287 treats a link without rel as rel="alternate".
         fe.link(href=_entry_url(entry.id), rel="alternate")

@@ -277,3 +277,59 @@ def test_process_emails_avoids_duplicates(mock_imap, db_session: Session):
     entries = get_entries_by_newsletter(db_session, newsletter.id)
     assert len(entries) == 1
     assert entries[0].subject == "Existing Subject"
+
+
+@patch("app.core.scheduler.SessionLocal")
+@patch("app.core.scheduler.scheduler")
+@patch("app.core.scheduler.datetime")
+def test_start_scheduler_registers_feed_body_backfill(
+    mock_datetime, mock_scheduler, mock_session_local, db_session: Session
+):
+    """The feed_body backfill runs once, at startup."""
+    fixed_now = datetime(2025, 10, 20, 12, 0, 0)
+    mock_datetime.now.return_value = fixed_now
+    mock_session_local.return_value = db_session
+    mock_scheduler.running = False
+    create_or_update_settings(
+        db_session,
+        SettingsCreate(
+            imap_server="imap.test.com",
+            imap_username="test@test.com",
+            imap_password="password",
+        ),
+    )
+
+    from app.core.scheduler import backfill_job, start_scheduler_with_interval
+
+    start_scheduler_with_interval()
+
+    mock_scheduler.add_job.assert_any_call(
+        backfill_job,
+        "date",
+        run_date=fixed_now,
+        id="feed_body_backfill",
+        replace_existing=True,
+    )
+
+
+@patch("app.core.scheduler.SessionLocal")
+@patch("app.core.scheduler.backfill_feed_bodies")
+def test_backfill_job(mock_backfill, mock_session_local, db_session: Session):
+    """The backfill job runs the backfill on a fresh session."""
+    mock_session_local.return_value = db_session
+    from app.core.scheduler import backfill_job
+
+    backfill_job()
+    mock_backfill.assert_called_once_with(db_session)
+
+
+@patch("app.core.scheduler.SessionLocal")
+@patch("app.core.scheduler.backfill_feed_bodies", side_effect=RuntimeError("x"))
+def test_backfill_job_logs_instead_of_raising(
+    mock_backfill, mock_session_local, db_session: Session
+):
+    """A failing backfill is logged, not raised into the scheduler."""
+    mock_session_local.return_value = db_session
+    from app.core.scheduler import backfill_job
+
+    backfill_job()  # must not raise

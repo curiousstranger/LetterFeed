@@ -437,3 +437,26 @@ def test_get_entry(db_session: Session):
 def test_get_entry_unknown_id(db_session: Session):
     """Test that getting an unknown entry id returns None."""
     assert get_entry(db_session, "does-not-exist") is None
+
+
+def test_create_entry_fills_feed_body_with_flattened_body(db_session: Session):
+    """New entries store a flattened copy for feeds and keep the original body."""
+    newsletter = create_newsletter(
+        db_session,
+        NewsletterCreate(
+            name="Flatten", sender_emails=[f"flat_{uuid.uuid4()}@test.com"]
+        ),
+    )
+    body = '<table role="presentation"><tr><td><p>Hello</p></td></tr></table>'
+
+    entry = create_entry(
+        db_session,
+        EntryCreate(subject="Flat", body=body, message_id=f"<{uuid.uuid4()}@test.com>"),
+        newsletter.id,
+    )
+
+    assert entry.body == body
+    assert (
+        entry.feed_body
+        == '<div role="presentation"><div><div><p>Hello</p></div></div></div>'
+    )

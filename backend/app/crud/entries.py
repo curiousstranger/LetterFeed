@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.logging import get_logger
 from app.models.entries import Entry
 from app.schemas.entries import EntryCreate
+from app.services.feed_html import flatten_layout_tables
 
 logger = get_logger(__name__)
 
@@ -59,7 +60,12 @@ def create_entry(db: Session, entry: EntryCreate, newsletter_id: str):
     logger.info(
         f"Creating new entry for newsletter_id={newsletter_id} with subject '{entry.subject}'"
     )
-    db_entry = Entry(id=generate(), **entry.model_dump(), newsletter_id=newsletter_id)
+    db_entry = Entry(
+        id=generate(),
+        **entry.model_dump(),
+        feed_body=flatten_layout_tables(entry.body),
+        newsletter_id=newsletter_id,
+    )
     db.add(db_entry)
     db.commit()
     db.refresh(db_entry)
