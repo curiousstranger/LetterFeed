@@ -136,6 +136,31 @@ def test_tracking_pixels_removed_and_real_images_kept():
         assert kept in out
 
 
+def test_pixel_that_html_parser_nests_an_image_under_is_still_removed(caplog):
+    """A self-closing pixel after a plain <img> doesn't abort flattening.
+
+    html.parser treats <img/> following an unclosed <img> as an open element,
+    so the next image becomes its child.
+    """
+    html = '<img src="a.jpg"><img src="p.gif" width="1" height="1"/><img src="c.jpg">'
+    with caplog.at_level(logging.WARNING, logger="app.services.feed_html"):
+        out = flatten_layout_tables(html)
+    assert "p.gif" not in out
+    assert "a.jpg" in out and "c.jpg" in out
+    assert not caplog.records
+
+
+def test_real_image_nested_under_a_pixel_survives():
+    """Removing a pixel keeps a real image the parser nested inside it."""
+    html = (
+        '<img src="a.jpg"><img src="p.gif" width="1"/>'
+        '<img src="photo.jpg" width="600"><p>text</p>'
+    )
+    soup = BeautifulSoup(flatten_layout_tables(html), "html.parser")
+    assert [i["src"] for i in soup.find_all("img")] == ["a.jpg", "photo.jpg"]
+    assert "text" in soup.get_text()
+
+
 def test_html_without_tables_is_unchanged():
     """HTML with no tables comes back as it went in."""
     html = '<p>Hi <b>there</b>, <a href="https://example.test/">link</a></p>'

@@ -97,7 +97,9 @@ def _flatten(html: str) -> str:
 
     for img in soup.find_all("img"):
         if _is_tracking_pixel(img):
-            img.decompose()
+            # unwrap, not decompose: html.parser can nest the next <img> inside
+            # a self-closed one, and that image must survive with its attrs.
+            img.unwrap()
 
     return str(soup)
 
