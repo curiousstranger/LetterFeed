@@ -161,6 +161,34 @@ def test_real_image_nested_under_a_pixel_survives():
     assert "text" in soup.get_text()
 
 
+@pytest.mark.parametrize("tag", ["header", "footer", "nav", "aside"])
+def test_sectioning_elements_become_divs_keeping_content(tag):
+    """Current deletes these elements, so they are renamed to <div>."""
+    html = f'<{tag} class="entry-header"><h2>Title</h2><p>Story</p></{tag}>'
+    soup = BeautifulSoup(flatten_layout_tables(html), "html.parser")
+    assert soup.find(tag) is None
+    div = soup.find("div")
+    assert div["class"] == ["entry-header"]
+    assert div.get_text() == "TitleStory"
+
+
+def test_nested_headers_keep_every_story():
+    """Denver Post nesting: the stories between nested headers all survive."""
+    html = (
+        "<h1>EDITOR'S PICKS</h1><header><header>"
+        "<h2>Loco Potato</h2><p>Read more</p>"
+        "<h2>Los Dos Potrillos</h2><header><p>Subheadline</p></header>"
+        "<p>Read more</p></header></header><h1>Rosario</h1>"
+    )
+    soup = BeautifulSoup(flatten_layout_tables(html), "html.parser")
+    assert soup.find(["header", "footer", "nav", "aside"]) is None
+    assert [h.get_text() for h in soup.find_all("h2")] == [
+        "Loco Potato",
+        "Los Dos Potrillos",
+    ]
+    assert "Subheadline" in soup.get_text()
+
+
 def test_html_without_tables_is_unchanged():
     """HTML with no tables comes back as it went in."""
     html = '<p>Hi <b>there</b>, <a href="https://example.test/">link</a></p>'
