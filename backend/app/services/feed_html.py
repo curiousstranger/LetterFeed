@@ -39,6 +39,13 @@ _LAYOUT_ATTRS = (
 )
 
 
+# Current deletes <header> with a match that ignores nesting, so everything from
+# the first opening tag to the first closing tag goes, stories included. The
+# other three get the same treatment as a precaution. All four style like <div>
+# in a browser, so renaming them costs nothing visible.
+_SECTIONING_TAGS = ["header", "footer", "nav", "aside"]
+
+
 def _own(table, names):
     """Return descendants of `table` named `names` that no nested table owns."""
     return [el for el in table.find_all(names) if el.find_parent("table") is table]
@@ -95,6 +102,9 @@ def _flatten(html: str) -> str:
             for attr in _LAYOUT_ATTRS:
                 el.attrs.pop(attr, None)
 
+    for el in soup.find_all(_SECTIONING_TAGS):
+        el.name = "div"
+
     for img in soup.find_all("img"):
         if _is_tracking_pixel(img):
             # unwrap, not decompose: html.parser can nest the next <img> inside
@@ -105,7 +115,9 @@ def _flatten(html: str) -> str:
 
 
 def flatten_layout_tables(html: str) -> str:
-    """Convert layout tables to <div>s, keep data tables, drop tracking pixels.
+    """Rewrite layout tables and sectioning elements as <div>s, drop pixels.
+
+    Layout tables and header/footer/nav/aside become <div>s; data tables stay.
 
     Never raises: on any failure the input is returned unchanged.
     """

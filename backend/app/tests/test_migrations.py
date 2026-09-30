@@ -42,3 +42,38 @@ def test_unflattened_feed_bodies_are_reset_for_the_backfill(tmp_path):
     rows = dict(con.execute("SELECT id, feed_body FROM entries"))
     con.close()
     assert rows == {"fallback": None, "flattened": "<div>x</div>", "pending": None}
+
+
+def test_feed_bodies_with_sectioning_elements_are_reset(tmp_path):
+    """feed_body holding header/footer/nav/aside is nulled for re-flattening."""
+    db = tmp_path / "m.db"
+    _alembic(db, "upgrade", "c4d8e1f2a3b5")
+    con = sqlite3.connect(db)
+    con.execute("INSERT INTO newsletters (id, name) VALUES ('n1', 'N')")
+    rows = [
+        ("header", '<div><header class="h">x</header></div>'),
+        ("footer", "<div><FOOTER>x</FOOTER></div>"),
+        ("nav", "<div><nav>x</nav></div>"),
+        ("aside", "<div><aside>x</aside></div>"),
+        ("plain", "<div><p>header footer nav aside</p></div>"),
+    ]
+    con.executemany(
+        "INSERT INTO entries (id, newsletter_id, message_id, subject, body, feed_body) "
+        "VALUES (?, 'n1', ?, 's', 'raw', ?)",
+        [(i, i, fb) for i, fb in rows],
+    )
+    con.commit()
+    con.close()
+
+    _alembic(db, "upgrade", "head")
+
+    con = sqlite3.connect(db)
+    got = dict(con.execute("SELECT id, feed_body FROM entries"))
+    con.close()
+    assert got == {
+        "header": None,
+        "footer": None,
+        "nav": None,
+        "aside": None,
+        "plain": "<div><p>header footer nav aside</p></div>",
+    }
