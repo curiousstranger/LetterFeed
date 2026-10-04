@@ -181,7 +181,9 @@ def _process_single_email(
         return
 
     msg = email.message_from_bytes(data[0][1])
-    sender = email.utils.parseaddr(msg["From"])[1]
+    # Match addresses case-insensitively: senders often mix case in From
+    # (e.g. "alerts.GovTrack.us"), while registered senders are lowercase.
+    sender = email.utils.parseaddr(msg["From"])[1].lower()
     message_id = msg.get("Message-ID")
 
     if not message_id:
@@ -272,8 +274,11 @@ def process_emails(db: Session) -> None:
         logger.info(
             f"Processing folder '{search_folder}' for {len(newsletters_in_folder)} newsletters."
         )
+        # Senders stored before EmailStr validation may not be lowercase.
         sender_map = {
-            sender.email: nl for nl in newsletters_in_folder for sender in nl.senders
+            sender.email.lower(): nl
+            for nl in newsletters_in_folder
+            for sender in nl.senders
         }
 
         mail = _connect_to_imap(settings, search_folder)
