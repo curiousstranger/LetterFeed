@@ -1,6 +1,7 @@
 from datetime import datetime
 from unittest.mock import ANY, MagicMock, patch
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.core.imap import _test_imap_connection, get_folders, send_client_id
@@ -277,3 +278,91 @@ def test_process_emails_avoids_duplicates(mock_imap, db_session: Session):
     entries = get_entries_by_newsletter(db_session, newsletter.id)
     assert len(entries) == 1
     assert entries[0].subject == "Existing Subject"
+
+
+@pytest.mark.parametrize(
+    "registered, from_address",
+    [
+        # EmailStr lowercases a registered sender's whole address, so any
+        # sender whose From header mixes case missed, in the domain...
+        ("bounces@alerts.example.com", "bounces@alerts.Example.com"),
+        # ...or in the local part.
+        ("news@example.com", "News@example.com"),
+    ],
+)
+@patch("app.services.email_processor.imaplib.IMAP4_SSL")
+def test_process_emails_matches_sender_case_insensitively(
+    mock_imap, db_session: Session, registered, from_address
+):
+    """Regression for #29: a sender matches whatever the case of its address.
+
+    With auto-add on, a miss tried to auto-add the sender again, failed on the
+    unique sender email, and left an empty newsletter behind on every poll.
+    """
+    settings_data = SettingsCreate(
+        imap_server="imap.test.com",
+        imap_username="test@test.com",
+        imap_password="password",
+        auto_add_new_senders=True,
+    )
+    create_or_update_settings(db_session, settings_data)
+    newsletter = create_newsletter(
+        db_session, NewsletterCreate(name="NL", sender_emails=[registered])
+    )
+
+    mock_mail = MagicMock()
+    mock_imap.return_value = mock_mail
+    mock_mail.login.return_value = ("OK", [b"Login successful"])
+    mock_mail.select.return_value = ("OK", [b"1"])
+    mock_mail.search.return_value = ("OK", [b"1"])
+    mock_msg_bytes = (
+        f"From: Sender <{from_address}>\nSubject: Hi\nMessage-ID: <c@d>\n\nBody"
+    ).encode()
+    mock_mail.fetch.return_value = ("OK", [(None, mock_msg_bytes)])
+
+    process_emails(db_session)
+
+    from app.crud.entries import get_entries_by_newsletter
+    from app.crud.newsletters import get_newsletters
+
+    assert [nl.id for nl in get_newsletters(db_session)] == [newsletter.id]
+    assert len(get_entries_by_newsletter(db_session, newsletter.id)) == 1
+
+
+@patch("app.services.email_processor.imaplib.IMAP4_SSL")
+def test_process_emails_matches_mixed_case_registered_sender(
+    mock_imap, db_session: Session
+):
+    """A sender stored before EmailStr validation (6ff4e81) kept its case."""
+    from app.models.newsletters import Sender
+
+    settings_data = SettingsCreate(
+        imap_server="imap.test.com",
+        imap_username="test@test.com",
+        imap_password="password",
+        auto_add_new_senders=True,
+    )
+    create_or_update_settings(db_session, settings_data)
+    newsletter = create_newsletter(
+        db_session, NewsletterCreate(name="NL", sender_emails=[])
+    )
+    db_session.add(
+        Sender(id="legacy", email="News@Example.com", newsletter_id=newsletter.id)
+    )
+    db_session.commit()
+
+    mock_mail = MagicMock()
+    mock_imap.return_value = mock_mail
+    mock_mail.login.return_value = ("OK", [b"Login successful"])
+    mock_mail.select.return_value = ("OK", [b"1"])
+    mock_mail.search.return_value = ("OK", [b"1"])
+    mock_msg_bytes = b"From: News@Example.com\nSubject: Hi\nMessage-ID: <e@f>\n\nBody"
+    mock_mail.fetch.return_value = ("OK", [(None, mock_msg_bytes)])
+
+    process_emails(db_session)
+
+    from app.crud.entries import get_entries_by_newsletter
+    from app.crud.newsletters import get_newsletters
+
+    assert [nl.id for nl in get_newsletters(db_session)] == [newsletter.id]
+    assert len(get_entries_by_newsletter(db_session, newsletter.id)) == 1
