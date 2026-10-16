@@ -160,6 +160,13 @@ def _auto_add_newsletter(
     # Decode the 'From' header to handle non-ASCII characters in the sender's name
     from_header = str(make_header(decode_header(msg.get("From", ""))))
     newsletter_name = email.utils.parseaddr(from_header)[0] or sender
+    # Some feed readers (e.g. Current) skip a new feed whose title matches an
+    # existing one, so disambiguate a display name that is already in use.
+    existing_names = {
+        name.strip().casefold() for (name,) in db.query(Newsletter.name) if name
+    }
+    if newsletter_name.strip().casefold() in existing_names:
+        newsletter_name = f"{newsletter_name} ({sender})"
     new_newsletter_schema = NewsletterCreate(
         name=newsletter_name,
         sender_emails=[sender],
