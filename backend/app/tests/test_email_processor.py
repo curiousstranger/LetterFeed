@@ -278,3 +278,83 @@ def test_process_single_email_with_null_bytes_in_body(db_session: Session):
         # The body should be the original (but decoded) body, since extraction failed
         # Note: _get_email_body will decode the payload.
         assert "Hello\x00 World" in entry_create_arg.body
+
+
+def _auto_add_from(db_session: Session, from_header: str, message_id: str):
+    """Process one email from an unknown sender with auto-add enabled."""
+    settings = create_or_update_settings(
+        db_session,
+        SettingsCreate(
+            imap_server="test.com",
+            imap_username="test",
+            imap_password="password",
+            auto_add_new_senders=True,
+        ),
+    )
+    mock_mail = MagicMock(spec=imaplib.IMAP4_SSL)
+    msg = Message()
+    msg["From"] = from_header
+    msg["Subject"] = "Test Email"
+    msg["Message-ID"] = message_id
+    msg.set_payload("<html><body><p>Body</p></body></html>", "utf-8")
+    mock_mail.fetch.return_value = ("OK", [(b"1 (RFC822)", msg.as_bytes())])
+    _process_single_email("1", mock_mail, db_session, {}, settings)
+
+
+def test_auto_add_appends_address_when_name_is_taken(db_session: Session):
+    """A second sender with the same display name gets a distinct newsletter name.
+
+    Readers such as Current skip a new feed whose title matches an existing one.
+    """
+    create_newsletter(
+        db_session,
+        NewsletterCreate(
+            name="The Verge", sender_emails=["subscriptions@theverge.com"]
+        ),
+    )
+
+    _auto_add_from(db_session, "The Verge <vergedaily@theverge.com>", "<id-verge>")
+
+    newsletter = (
+        db_session.query(Newsletter)
+        .join(Newsletter.senders)
+        .filter_by(email="vergedaily@theverge.com")
+        .one()
+    )
+    assert newsletter.name == "The Verge (vergedaily@theverge.com)"
+
+
+def test_auto_add_name_collision_ignores_case_and_whitespace(db_session: Session):
+    """Names that differ only in case or surrounding spaces still collide."""
+    create_newsletter(
+        db_session,
+        NewsletterCreate(name="  the verge ", sender_emails=["a@theverge.com"]),
+    )
+
+    _auto_add_from(db_session, "The Verge <b@theverge.com>", "<id-verge-case>")
+
+    newsletter = (
+        db_session.query(Newsletter)
+        .join(Newsletter.senders)
+        .filter_by(email="b@theverge.com")
+        .one()
+    )
+    assert newsletter.name == "The Verge (b@theverge.com)"
+
+
+def test_auto_add_keeps_display_name_when_unique(db_session: Session):
+    """Without a collision, the display name is used unchanged."""
+    create_newsletter(
+        db_session,
+        NewsletterCreate(name="Vox Recommends", sender_emails=["newsletter@vox.com"]),
+    )
+
+    _auto_add_from(db_session, "The Verge <vergedaily@theverge.com>", "<id-unique>")
+
+    newsletter = (
+        db_session.query(Newsletter)
+        .join(Newsletter.senders)
+        .filter_by(email="vergedaily@theverge.com")
+        .one()
+    )
+    assert newsletter.name == "The Verge"
