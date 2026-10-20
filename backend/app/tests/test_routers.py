@@ -242,6 +242,19 @@ def test_get_entry_page_returns_stored_body(client: TestClient):
     assert response.text == body
 
 
+def test_get_entry_page_strips_readability_penalized_heading_classes(
+    client: TestClient,
+):
+    """Test that reader apps' extractors don't discard the body's headings."""
+    body = '<h2 class="header-anchor-post"><a href="x">Pasta</a></h2><p>text</p>'
+    entry_id = _create_entry_via_api(client, body)
+
+    response = client.get(f"/entries/{entry_id}")
+
+    assert response.status_code == 200
+    assert response.text == '<h2><a href="x">Pasta</a></h2><p>text</p>'
+
+
 def test_get_entry_page_sends_safety_headers(client: TestClient):
     """Test that the entry page sends the exact sandbox and safety headers."""
     entry_id = _create_entry_via_api(client, "<p>hi</p>")
