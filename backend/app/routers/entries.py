@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.logging import get_logger
 from app.crud.entries import get_entry
+from app.services.entry_page import strip_penalized_heading_classes
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -37,14 +38,18 @@ SAFETY_HEADERS = {
 
 @router.get("/entries/{entry_id}")
 def get_entry_page(entry_id: str, db: Session = Depends(get_db)):
-    """Serve an entry's stored body as a sandboxed standalone HTML page."""
+    """Serve an entry's stored body as a sandboxed standalone HTML page.
+
+    Heading classes that Readability-based reader views penalize are removed, so
+    those views keep the headings (and the links inside them).
+    """
     logger.info(f"Serving entry page for entry_id={entry_id}")
     entry = get_entry(db, entry_id)
     if not entry:
         logger.warning(f"Entry with id={entry_id} not found")
         raise HTTPException(status_code=404, detail="Entry not found")
     return Response(
-        content=entry.body,
+        content=strip_penalized_heading_classes(entry.body),
         media_type="text/html; charset=utf-8",
         headers=SAFETY_HEADERS,
     )
