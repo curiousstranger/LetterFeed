@@ -77,3 +77,36 @@ def test_feed_bodies_with_sectioning_elements_are_reset(tmp_path):
         "aside": None,
         "plain": "<div><p>header footer nav aside</p></div>",
     }
+
+
+def test_feed_bodies_with_class_attributes_are_reset(tmp_path):
+    """feed_body still carrying classes or comments is nulled for re-flattening."""
+    db = tmp_path / "m.db"
+    _alembic(db, "upgrade", "d5e9f2a3b4c6")
+    con = sqlite3.connect(db)
+    con.execute("INSERT INTO newsletters (id, name) VALUES ('n1', 'N')")
+    rows = [
+        ("classed", '<div class="newsletter-paragraph"><p>x</p></div>'),
+        ("upper", "<div><P CLASS='a'>x</P></div>"),
+        ("comment", "<div><!--[if mso]><table><![endif]--><p>x</p></div>"),
+        ("plain", "<div><p>no attributes here</p></div>"),
+    ]
+    con.executemany(
+        "INSERT INTO entries (id, newsletter_id, message_id, subject, body, feed_body) "
+        "VALUES (?, 'n1', ?, 's', 'raw', ?)",
+        [(i, i, fb) for i, fb in rows],
+    )
+    con.commit()
+    con.close()
+
+    _alembic(db, "upgrade", "head")
+
+    con = sqlite3.connect(db)
+    got = dict(con.execute("SELECT id, feed_body FROM entries"))
+    con.close()
+    assert got == {
+        "classed": None,
+        "upper": None,
+        "comment": None,
+        "plain": "<div><p>no attributes here</p></div>",
+    }

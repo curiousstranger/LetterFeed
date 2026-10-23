@@ -96,7 +96,7 @@ def test_mailchimp_style_nesting_flattens_every_level():
 
 
 def test_converted_elements_lose_layout_attributes_but_keep_others():
-    """Table-layout attributes go; style, class, id and the rest stay."""
+    """Table-layout attributes and class go; style, id and the rest stay."""
     html = (
         '<table role="presentation" align="center" width="600" height="10" '
         'bgcolor="#fff" background="bg.png" cellpadding="0" cellspacing="0" '
@@ -111,12 +111,11 @@ def test_converted_elements_lose_layout_attributes_but_keep_others():
     assert outer.attrs == {
         "role": "presentation",
         "style": "color: red",
-        "class": ["wrap"],
         "id": "outer",
     }
     row, cell = outer.find_all("div")
     assert row.attrs == {"style": "s1"}
-    assert cell.attrs == {"class": ["cell"]}
+    assert cell.attrs == {}
 
 
 def test_tracking_pixels_removed_and_real_images_kept():
@@ -168,7 +167,6 @@ def test_sectioning_elements_become_divs_keeping_content(tag):
     soup = BeautifulSoup(flatten_layout_tables(html), "html.parser")
     assert soup.find(tag) is None
     div = soup.find("div")
-    assert div["class"] == ["entry-header"]
     assert div.get_text() == "TitleStory"
 
 
@@ -187,6 +185,41 @@ def test_nested_headers_keep_every_story():
         "Los Dos Potrillos",
     ]
     assert "Subheadline" in soup.get_text()
+
+
+def test_class_attributes_are_removed_keeping_content():
+    """Current deletes a "newsletter"-classed element up to the first closing tag.
+
+    Vulture wraps each paragraph in class="newsletter-paragraph-wrapper", so
+    Current cut every paragraph up to its first </p>, </a> or </em>.
+    """
+    html = (
+        '<table class="newsletter-paragraph-wrapper"><tr><td>'
+        '<p class="newsletter-paragraph">That\u2019s the thinking, driving '
+        '<a href="https://example.test/" class="link"><em>Selects</em></a>, '
+        "a new project.</p></td></tr></table>"
+        '<span CLASS="share">Share</span>'
+    )
+    out = flatten_layout_tables(html)
+    soup = BeautifulSoup(out, "html.parser")
+    assert [el for el in soup.find_all(True) if el.has_attr("class")] == []
+    assert soup.find("a")["href"] == "https://example.test/"
+    assert soup.get_text() == (
+        "That\u2019s the thinking, driving Selects, a new project.Share"
+    )
+
+
+def test_comments_are_removed_keeping_content_between_them():
+    """Outlook conditional comments hold classed markup Current's regex matches."""
+    html = (
+        '<p>Before</p><!--[if mso]><table class="outlook header"><tr><td>'
+        "<![endif]--><p>Story</p><!--[if mso]></td></tr></table><![endif]-->"
+        "<!--[if !mso]><!--><p>Visible</p><!--<![endif]-->"
+    )
+    out = flatten_layout_tables(html)
+    assert "<!--" not in out
+    assert "class" not in out
+    assert out == "<p>Before</p><p>Story</p><p>Visible</p>"
 
 
 def test_html_without_tables_is_unchanged():
