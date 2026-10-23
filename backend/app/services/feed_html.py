@@ -1,4 +1,4 @@
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment
 
 from app.core.logging import get_logger
 
@@ -44,6 +44,14 @@ _LAYOUT_ATTRS = (
 # other three get the same treatment as a precaution. All four style like <div>
 # in a browser, so renaming them costs nothing visible.
 _SECTIONING_TAGS = ["header", "footer", "nav", "aside"]
+
+# Current also deletes any element whose class holds a word such as
+# "newsletter", "share" or "subscribe", again from its opening tag to the first
+# closing tag of any kind. Vulture wraps every paragraph in
+# "newsletter-paragraph-wrapper", so each lost its text up to the first </p>,
+# </a> or </em>. Feed readers drop stylesheets, so class styles nothing here.
+# The match runs on the raw string, so Outlook conditional comments holding
+# classed markup trigger it too; comments go as well.
 
 
 def _own(table, names):
@@ -105,6 +113,12 @@ def _flatten(html: str) -> str:
     for el in soup.find_all(_SECTIONING_TAGS):
         el.name = "div"
 
+    for el in soup.find_all(class_=True):
+        del el["class"]
+
+    for comment in soup.find_all(string=lambda s: isinstance(s, Comment)):
+        comment.extract()
+
     for img in soup.find_all("img"):
         if _is_tracking_pixel(img):
             # unwrap, not decompose: html.parser can nest the next <img> inside
@@ -118,6 +132,7 @@ def flatten_layout_tables(html: str) -> str:
     """Rewrite layout tables and sectioning elements as <div>s, drop pixels.
 
     Layout tables and header/footer/nav/aside become <div>s; data tables stay.
+    Class attributes and comments are removed.
 
     Never raises: on any failure the input is returned unchanged.
     """
